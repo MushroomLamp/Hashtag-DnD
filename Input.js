@@ -4686,7 +4686,7 @@ function doEquip(command) {
 
   var dontWord = character.name == "You" ? "don't" : "doesn't"
 
-  let itemName = getArgumentRemainder(command, 0)
+  let itemName = stripPunctuation(getArgumentRemainder(command, 0))
 
   let item = character.inventory.find((element) => element.name.toLowerCase() == itemName.toLowerCase())
 
@@ -4745,7 +4745,7 @@ function doDrop(command) {
 
   const item = {
     quantity: arg0,
-    name: getArgumentRemainder(command, itemArgIndex).replace(/^((the)|(a)|(an))\s/, "").plural(true)
+    name: stripPunctuation(getArgumentRemainder(command, itemArgIndex)).replace(/^((the)|(a)|(an))\s/, "").plural(true)
   }
 
   var displayItemName = item.name.plural(item.quantity == 1)
@@ -4797,7 +4797,7 @@ function doGive(command) {
 
   const item = {
     quantity: !isNaN(arg1) ? arg1 : foundAll ? Number.MAX_SAFE_INTEGER : 1,
-    name: getArgumentRemainder(command, isNaN(arg1) && !foundAll ? 1 : 2).replace(/^((the)|(a)|(an)|(of the))\s/, "").plural(true)
+    name: stripPunctuation(getArgumentRemainder(command, isNaN(arg1) && !foundAll ? 1 : 2)).replace(/^((the)|(a)|(an)|(of the))\s/, "").plural(true)
   }
 
   var otherCharacter = getCharacter(arg0)
