@@ -336,6 +336,41 @@ const modifier = (text) => {
       }
       text += "******************\n\n"
       break
+    case "quests":
+      text += `*** QUESTS (${(state.questsFilter || "active").toUpperCase()}) ***`
+      // tracked first
+      const filter = (state.questsFilter || "active").toLowerCase()
+      let list = state.quests || []
+      if (filter == "active") list = list.filter(q => q.status == "added" || q.status == "accepted")
+      else if (filter == "completed") list = list.filter(q => q.status == "completed")
+      const tracked = list.filter(q => q.tracked)
+      const others = list.filter(q => !q.tracked)
+      let qCounter = 0
+      if (tracked.length > 0) {
+        for (const q of tracked) {
+          text += `\n${++qCounter}. ${toTitleCase(q.title)} (Status: ${toTitleCase(q.status)}) [Day ${q.createdDay}${q.completedDay != null ? ` → ${q.completedDay}` : ""}] (Tracked)`
+          if (q.objectives && q.objectives.length > 0) {
+            text += `\n  Objectives:`
+            q.objectives.forEach((o, i) => { text += `\n   - ${o.text}` })
+          }
+          if (q.rewards) {
+            const r = q.rewards
+            let rtext = []
+            if (r.xp > 0) rtext.push(`${r.xp} XP`)
+            if (r.gold > 0) rtext.push(`${r.gold} Gold`)
+            if (r.items && r.items.length > 0) rtext.push(`${r.items.map(it => `${it.qty} ${toTitleCase(it.name.plural(it.qty == 1))}`).join(", ")}`)
+            if (r.spells && r.spells.length > 0) rtext.push(`${r.spells.map(s => toTitleCase(s)).join(", ")}`)
+            if (rtext.length > 0) text += `\n  Rewards: ${rtext.join("; ")}`
+          }
+          if (q.description && q.description.length > 0) text += `\n  ${q.description.split("\n")[0]}`
+        }
+      }
+      for (const q of others) {
+        text += `\n${++qCounter}. ${toTitleCase(q.title)} (Status: ${toTitleCase(q.status)}) [Day ${q.createdDay}${q.completedDay != null ? ` → ${q.completedDay}` : ""}]`
+      }
+      if (qCounter == 0) text += `\nNo quests found.`
+      text += "\n******************\n\n"
+      break
     case "map":
       text += `A 11x11 map of the area surrounding (${state.x},${state.y}):\n`
       var map = mapGenerate()
@@ -643,6 +678,24 @@ const modifier = (text) => {
       text += "\n    Returns the current version of this scenario."
       text += "\n#help"
       text += "\n    This long ass help menu. I am paid by lines of codes."
+      
+      text += "\n\n--Quests--"
+      text += "\n#quest add title (\"objective\") (xp:NN) (gold:NN) (item:\"Name\"|item:2x\"Arrows\") (spell:\"Spell Name\") ..."
+      text += "\n    Adds a new quest with optional objectives and rewards. Description is inferred from recent context and your input."
+      text += "\n#quest accept title_or_index"
+      text += "\n    Accepts the quest."
+      text += "\n#quest complete title_or_index"
+      text += "\n    Completes the quest and automatically applies rewards to the acting character."
+      text += "\n#quest abandon title_or_index"
+      text += "\n    Abandons the quest."
+      text += "\n#quest remove title_or_index"
+      text += "\n    Completely deletes the quest and its story card."
+      text += "\n#quests (active|completed|all)"
+      text += "\n    Lists quests. The tracked quest appears first."
+      text += "\n#trackquest title_or_index"
+      text += "\n    Tracks exactly one quest so its card is prioritized in context."
+      text += "\n#untrackquest"
+      text += "\n    Stops tracking the current quest."
       
       break
   }

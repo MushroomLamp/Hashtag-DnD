@@ -4571,6 +4571,10 @@ function AutoCards(inHook, inText, inStop) {
     Yi1i1i
     Idea for the redoCard API function and "/ac redo" in-game command
 
+    MushroomLamp
+    Implementing #quest system
+
+
     A note to future individuals:
     If you fork or modify Auto-Cards... Go ahead and put your name here too! Yay! 🥰
     */

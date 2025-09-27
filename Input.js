@@ -101,6 +101,13 @@ const equipSynonyms = ["equip", "arm", "wear"]
 const rewardSynonyms = ["reward"]
 const helpSynonyms = ["help"]
 
+// Quests
+const questSynonyms = ["quest"]
+const questsSynonyms = ["quests"]
+const trackQuestSynonyms = ["trackquest"]
+const untrackQuestSynonyms = ["untrackquest"]
+const abandonQuestSynonyms = ["abandonquest"]
+
 const modifier = (text) => {
   init()
   const rawText = text
@@ -261,6 +268,11 @@ const modifier = (text) => {
   if (text == null) text = processCommandSynonyms(command, commandName, showLocationsSynonyms, doShowLocations)
   if (text == null) text = processCommandSynonyms(command, commandName, getLocationSynonyms, doGetLocation)
   if (text == null) text = processCommandSynonyms(command, commandName, mapSynonyms, doMap)
+  if (text == null) text = processCommandSynonyms(command, commandName, questsSynonyms, doQuests)
+  if (text == null) text = processCommandSynonyms(command, commandName, trackQuestSynonyms, doTrackQuest)
+  if (text == null) text = processCommandSynonyms(command, commandName, untrackQuestSynonyms, doUntrackQuest)
+  if (text == null) text = processCommandSynonyms(command, commandName, abandonQuestSynonyms, doAbandonQuest)
+  if (text == null) text = processCommandSynonyms(command, commandName, questSynonyms, doQuest)
   if (text == null) text = processCommandSynonyms(command, commandName, goNorthSynonyms, doGoNorth)
   if (text == null) text = processCommandSynonyms(command, commandName, goSouthSynonyms, doGoSouth)
   if (text == null) text = processCommandSynonyms(command, commandName, goEastSynonyms, doGoEast)
@@ -1690,6 +1702,7 @@ function init() {
   if (state.tempAlly == null) state.tempAlly = createAlly("ally", 10, 10, "2d6", 10)
   if (state.characters == null) state.characters = []
   if (state.notes == null) state.notes = []
+  if (state.quests == null) state.quests = []
   if (state.locations == null) state.locations = []
   if (state.x == null) state.x = 0
   if (state.y == null) state.y = 0
@@ -5214,6 +5227,7 @@ function doReset(command) {
   state.defaultDifficulty = null
   state.autoXp = null
   state.day = null
+  state.quests = []
 
   state.show = "reset"
   return " "
@@ -5222,6 +5236,307 @@ function doReset(command) {
 function doHelp(command) {
   state.show = "help"
   return " "
+}
+
+// =====================
+// Quests Implementation
+// =====================
+
+function questSlugify(title) {
+  let slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (slug.length == 0) slug = "quest";
+  let unique = slug;
+  let i = 2;
+  while (state.quests.find(q => q.slug == unique) != null) {
+    unique = `${slug}-${i++}`
+  }
+  return unique;
+}
+
+function findQuestByTitleOrIndex(input) {
+  if (input == null) return null;
+  let q = null;
+  // numeric index from #quests
+  if (!isNaN(input)) {
+    const idx = parseInt(input) - 1;
+    if (idx >= 0 && idx < state.quests.length) return state.quests[idx];
+  }
+  // match by title (case-insensitive)
+  const lower = input.toLowerCase();
+  q = state.quests.find(x => x.title.toLowerCase() == lower);
+  if (q != null) return q;
+  // partial contains
+  const matches = state.quests.filter(x => x.title.toLowerCase().includes(lower));
+  if (matches.length == 1) return matches[0];
+  return null;
+}
+
+function parseQuestRewardsAndObjectives(textRemainder) {
+  const rewards = { items: [], spells: [] };
+  const objectives = [];
+  let work = textRemainder || "";
+
+  // Remove -r flags early
+  work = work.replace(/\s-+r\b/gi, " ");
+
+  // Items: item:2x"Arrows" | item:"Key" | item:2*Arrows | item:Arrows
+  const itemRegex = /\bitem\s*:\s*(?:(\d+)\s*(?:x|\*)\s*)?(?:"([^"]+)"|'([^']+)'|([^\s]+))/ig;
+  work = work.replace(itemRegex, function(match, qty1, q2, q3, q4) {
+    let qty = qty1 != null ? Math.max(1, parseInt(qty1)) : 1;
+    const name = (q2 || q3 || q4 || "").trim();
+    if (name.length > 0) rewards.items.push({ name, qty });
+    return " ";
+  });
+
+  // Spells: spell:"Magic Missile" | spell:Magic
+  const spellRegex = /\bspell\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))/ig;
+  work = work.replace(spellRegex, function(match, q1, q2, q3) {
+    const s = (q1 || q2 || q3 || "").trim();
+    if (s.length > 0) rewards.spells.push(s);
+    return " ";
+  });
+
+  // XP: allow multiple, sum
+  work = work.replace(/\bxp\s*:\s*(\d+)/ig, function(match, num) {
+    const v = Math.max(0, parseInt(num));
+    rewards.xp = (rewards.xp || 0) + v;
+    return " ";
+  });
+
+  // Gold: allow multiple, sum
+  work = work.replace(/\bgold\s*:\s*(\d+)/ig, function(match, num) {
+    const v = Math.max(0, parseInt(num));
+    rewards.gold = (rewards.gold || 0) + v;
+    return " ";
+  });
+
+  // Objectives: remaining quoted phrases are treated as objectives
+  const objectiveRegex = /"([\s\S]*?)"/g;
+  work = work.replace(objectiveRegex, function(match, inner) {
+    const obj = (inner || "").trim();
+    if (obj.length > 0) objectives.push({ text: obj, done: false });
+    return " ";
+  });
+
+  // Title is what's left trimmed
+  const title = work.replace(/\s+/g, " ").trim();
+  return { title, rewards, objectives };
+}
+
+function questEnsureTrackedCardPriority(title, message) {
+  try {
+    if (typeof AutoCards === "function" && AutoCards().API) {
+      // Unflag any previously tracked quest cards to ensure only the active tracked quest is prioritized
+      try { AutoCards().API.setCardAsAuto("", false) } catch {}
+      AutoCards().API.setCardAsAuto(title, true);
+      if (message && message.length > 0) {
+        try { AutoCards().API.addCardMemory(title, message) } catch {}
+      }
+    }
+  } catch {}
+}
+
+function questCreateOrUpdateCard(quest, eventText) {
+  try {
+    if (typeof AutoCards === "function" && AutoCards().API) {
+      let valueText = `[Quest: ${quest.title}]\nStatus: ${toTitleCase(quest.status)}${quest.createdDay != null ? ` (Day ${quest.createdDay})` : ""}${quest.completedDay != null ? ` → Day ${quest.completedDay}` : ""}`
+      if (quest.description && quest.description.length > 0) valueText += `\n\n${quest.description}`
+      if (quest.objectives && quest.objectives.length > 0) {
+        valueText += `\n\nObjectives:`
+        quest.objectives.forEach((o, i) => { valueText += `\n${i + 1}. ${o.text}` })
+      }
+      if (quest.rewards) {
+        const r = quest.rewards
+        let rtext = []
+        if (r.xp > 0) rtext.push(`${r.xp} XP`)
+        if (r.gold > 0) rtext.push(`${r.gold} Gold`)
+        if (r.items && r.items.length > 0) rtext.push(`${r.items.map(it => `${it.qty} ${toTitleCase(it.name.plural(it.qty == 1))}`).join(", ")}`)
+        if (r.spells && r.spells.length > 0) rtext.push(`${r.spells.map(s => toTitleCase(s)).join(", ")}`)
+        if (rtext.length > 0) valueText += `\n\nRewards: ${rtext.join("; ")}`
+      }
+      // Do not append noisy event text to the card entry; rely on memories instead
+
+      const keys = `quest,quest:${quest.slug}`
+      // Rebuild as a true Auto-Card so it can be prioritized/contextualized
+      const safeTitle = quest.title.replace(/[{}]/g, "").trim()
+      const entry = `{title: ${safeTitle}}` + valueText
+      const description = "Auto-Cards will contextualize these memories:\n{updates: true, limit: 2750}"
+      AutoCards().API.eraseCard(card => (card.title === quest.title))
+      AutoCards().API.buildCard({ title: quest.title, entry: entry, type: "quest", keys: keys, description: description })
+    }
+  } catch {}
+}
+
+function doQuest(command) {
+  const action = (getArgument(command, 0) || "").toLowerCase();
+  const remainder = getArgumentRemainder(command, 1) || "";
+
+  switch (action) {
+    case "add": {
+      const parsed = parseQuestRewardsAndObjectives(remainder);
+      let title = parsed.title;
+      if (title == null || title.length == 0) {
+        state.show = "none"
+        return "\n[Error: Not enough parameters. Provide a quest title. See #help]\n"
+      }
+
+      const slug = questSlugify(title);
+
+      // Description from recent context (last couple of messages)
+      let contextSummary = "";
+      try {
+        let collected = []
+        for (let i = history.length - 1; i >= 0 && collected.length < 2; i--) {
+          if (history[i].type == "story") collected.push(history[i].text.trim())
+        }
+        collected.reverse()
+        if (collected.length > 0) contextSummary = collected.join("\n\n")
+      } catch {}
+
+      const quest = {
+        id: `${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+        title: title,
+        slug: slug,
+        description: (function(){
+          let parts = []
+          if (contextSummary && contextSummary.length > 0) parts.push(contextSummary)
+          if (parts.length == 0) parts.push(`Quest: ${toTitleCase(title)}`)
+          return parts.join("\n\n")
+        })(),
+        status: "accepted",
+        objectives: (parsed.objectives || []).map(o => ({ text: o.text, done: false })),
+        rewards: {
+          xp: parsed.rewards.xp || 0,
+          gold: parsed.rewards.gold || 0,
+          items: parsed.rewards.items || [],
+          spells: parsed.rewards.spells || []
+        },
+        tags: ["quest", `quest:${slug}`],
+        createdDay: state.day,
+        completedDay: null,
+        tracked: false
+      }
+
+      state.quests.push(quest)
+      questCreateOrUpdateCard(quest, "Quest created")
+
+      state.show = "none"
+      return `\n[Quest \"${toTitleCase(quest.title)}\" added and accepted]`;
+    }
+    case "accept": {
+      state.show = "none"
+      return `\n[Info: Quests are accepted automatically when added]`
+    }
+    case "complete": {
+      const target = getArgumentRemainder(command, 1)
+      const quest = findQuestByTitleOrIndex(target)
+      if (quest == null) { state.show = "none"; return `\n[Error: Quest not found. See #quests]` }
+      if (quest.status != "completed") quest.status = "accepted"
+      // apply rewards
+      const c = getCharacter()
+      let text = "\n"
+      // XP
+      if (quest.rewards && quest.rewards.xp > 0) {
+        const beforeLevel = getLevel(c.experience)
+        c.experience += quest.rewards.xp
+        const afterLevel = getLevel(c.experience)
+        const next = getNextLevelXp(c.experience)
+        if (afterLevel > beforeLevel) text += `[${getPossessiveName(c.name)} experience is increased to ${c.experience}. LEVEL UP! Level: ${afterLevel}, Health Max: ${getHealthMax(c)}. Next level at ${getNextLevelXp(c.experience)}]\n`
+        else text += `[${getPossessiveName(c.name)} experience is increased to ${c.experience}. Next level at ${next}]\n`
+      }
+      // Gold
+      if (quest.rewards && quest.rewards.gold > 0) text += doTake(`take ${quest.rewards.gold} Gold`)
+      // Items
+      if (quest.rewards && quest.rewards.items && quest.rewards.items.length > 0) {
+        quest.rewards.items.forEach(it => { text += doTake(`take ${it.qty} ${it.name}`) })
+      }
+      // Spells
+      if (quest.rewards && quest.rewards.spells && quest.rewards.spells.length > 0) {
+        quest.rewards.spells.forEach(sp => { text += doLearnSpell(`learnspell ${sp}`) })
+      }
+
+      quest.status = "completed"
+      quest.completedDay = state.day
+      quest.tracked = false
+      quest.objectives.forEach(o => o.done = true)
+      questCreateOrUpdateCard(quest, "Quest completed and rewards applied")
+
+      state.show = "prefix"
+      state.prefix = text
+      return " "
+    }
+    case "abandon": {
+      const target = getArgumentRemainder(command, 1)
+      const quest = findQuestByTitleOrIndex(target)
+      if (quest == null) { state.show = "none"; return `\n[Error: Quest not found. See #quests]` }
+      quest.status = "abandoned"
+      quest.tracked = false
+      questCreateOrUpdateCard(quest, "Quest abandoned")
+      state.show = "none"
+      return `\n[Quest \"${toTitleCase(quest.title)}\" abandoned]`
+    }
+    case "remove": {
+      const target = getArgumentRemainder(command, 1)
+      const quest = findQuestByTitleOrIndex(target)
+      if (quest == null) { state.show = "none"; return `\n[Error: Quest not found. See #quests]` }
+      // Remove quest from state
+      const beforeLen = state.quests.length
+      state.quests = state.quests.filter(q => q !== quest)
+      // Erase its Auto-Card
+      try {
+        if (typeof AutoCards === "function" && AutoCards().API) {
+          AutoCards().API.eraseCard(card => (card.title === quest.title))
+        }
+      } catch {}
+      state.show = "none"
+      return beforeLen !== state.quests.length
+        ? `\n[Quest \"${toTitleCase(quest.title)}\" removed]`
+        : `\n[Error: Failed to remove quest]`
+    }
+  }
+
+  state.show = "none"
+  return "\n[Error: Not enough parameters. See #help]\n"
+}
+
+function doQuests(command) {
+  let filter = (getArgument(command, 0) || "active").toLowerCase()
+  if (["active", "completed", "all"].indexOf(filter) == -1) filter = "active"
+  state.questsFilter = filter
+  state.show = "quests"
+  return " "
+}
+
+function doTrackQuest(command) {
+  const target = getArgumentRemainder(command, 0)
+  if (target == null) { state.show = "none"; return `\n[Error: Not enough parameters. See #help]\n` }
+  const quest = findQuestByTitleOrIndex(target)
+  if (quest == null) { state.show = "none"; return `\n[Error: Quest not found. See #quests]` }
+  if (quest.status == "completed" || quest.status == "abandoned") { state.show = "none"; return `\n[Error: You cannot track a ${quest.status} quest]` }
+  state.quests.forEach(q => q.tracked = false)
+  quest.tracked = true
+  questEnsureTrackedCardPriority(quest.title, "Quest tracking enabled")
+  state.show = "none"
+  return `\n[Tracking quest \"${toTitleCase(quest.title)}\"]\n`
+}
+
+function doUntrackQuest(command) {
+  let changed = false
+  state.quests.forEach(q => { if (q.tracked) { q.tracked = false; changed = true } })
+  state.show = "none"
+  return changed ? "\n[Quest tracking cleared]\n" : "\n[No quest was being tracked]\n"
+}
+
+function doAbandonQuest(command) {
+  const target = getArgumentRemainder(command, 0)
+  if (target == null) { state.show = "none"; return `\n[Error: Not enough parameters. See #help]\n` }
+  const quest = findQuestByTitleOrIndex(target)
+  if (quest == null) { state.show = "none"; return `\n[Error: Quest not found. See #quests]` }
+  quest.status = "abandoned"
+  quest.tracked = false
+  questCreateOrUpdateCard(quest, "Quest abandoned")
+  state.show = "none"
+  return `\n[Quest \"${toTitleCase(quest.title)}\" abandoned]`
 }
 
 modifier(text)
