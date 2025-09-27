@@ -373,11 +373,22 @@ const modifier = (text) => {
   var blocks = splitCommandBlocks(rawText)
   if (blocks.length > 1) {
     var outputs = []
+    var prefixes = []
     for (var b = 0; b < blocks.length; b++) {
       var result = processCommandBlock(blocks[b])
-      if (result != null && result.length > 0) outputs.push(result)
+      // Capture any roll/result prefix produced by this block
+      if (state.show == "prefix" || state.show == "prefixOnly") {
+        if (state.prefix != null && state.prefix != "") prefixes.push(state.prefix)
+      }
+      // Reset so only our combined text is used later
+      state.show = null
+      state.prefix = null
+      if (result != null && result.trim().length > 0) outputs.push(result)
     }
-    var combined = outputs.join("\n\n")
+    var parts = []
+    if (prefixes.length > 0) parts.push(prefixes.join(""))
+    if (outputs.length > 0) parts.push(outputs.join("\n\n"))
+    var combined = parts.join("\n")
     // Remove any accidental leading whitespace introduced by block processing
     combined = combined.replace(/^\s+/, "")
     combined = AutoCards("input", combined);
