@@ -20,6 +20,28 @@ Watch the [tutorial video](https://youtu.be/E5TYU7rDaBQ).
 Hashtag-DnD has another new scenario! Check out the [VTOL-Knights Repository](https://github.com/raeleus/Hashtag-DnD/tree/VTOL-Knights)
 This script implements Auto-Cards by LewdLeah. See more details [on github](https://github.com/LewdLeah/Auto-Cards)
 
+v. 0.9.0
+* Added quest system with Auto-Cards integration: `#quest add|complete|abandon|remove`, `#quests`, `#trackquest`, `#untrackquest`
+* Example commands:
+  - Add: `#quest add Goblin Menace "Eliminate the goblin" xp:100 gold:50 item:"Healing Potion" item:3x"Data-Shard" spell:"Magic Missile"`
+  - Track: `#trackquest Goblin Menace`
+  - List: `#quests active`
+* Quick command guide:
+  - `#quest add title ("objective") (xp:NN) (gold:NN) (item:"Name"|item:2x"Name") (spell:"Spell") ...`
+    - Creates the quest, sets status to accepted, and writes/updates a quest card.
+  - `#quest complete title_or_index`
+    - Completes the quest, applies rewards to the acting character, and updates the card.
+  - `#quest abandon title_or_index`
+    - Marks as abandoned and untracks.
+  - `#quest remove title_or_index`
+    - Completely deletes the quest and its story card.
+  - `#quests (active|completed|all)`
+    - Lists quests; tracked appears first.
+  - `#trackquest title_or_index`
+    - Tracks a single quest; prioritizes its card in context.
+  - `#untrackquest`
+    - Stops tracking.
+
 v. 0.8.0
 * Added Auto-Cards by LewdLeah. This feature is disabled by default. Activate it by changing the "Disabled" setting to "false" in the "Configure Auto-Cards" story card.
 
