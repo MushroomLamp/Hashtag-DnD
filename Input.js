@@ -1,4 +1,4 @@
-const version = "Hashtag DnD v0.8.0"
+const version = "Hashtag DnD v0.9.0"
 const rollSynonyms = ["roll"]
 const createSynonyms = ["create", "generate", "start", "begin", "setup", "party", "member", "new"]
 const renameCharacterSynonyms = ["renamecharacter", "renameperson"]
@@ -108,6 +108,204 @@ const trackQuestSynonyms = ["trackquest"]
 const untrackQuestSynonyms = ["untrackquest"]
 const abandonQuestSynonyms = ["abandonquest"]
 
+// Splits raw input into sequential command blocks, where each block starts with a line containing a "#" command
+function splitCommandBlocks(text) {
+  if (text == null) return []
+  var lines = text.split("\n")
+  var blocks = []
+  var current = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    if (line.includes("#")) {
+      if (current.length > 0) blocks.push(current.join("\n"))
+      current = [line]
+    } else {
+      if (current.length > 0) current.push(line)
+      // ignore leading non-command lines before first '#'
+    }
+  }
+  if (current.length > 0) blocks.push(current.join("\n"))
+  return blocks
+}
+
+// Processes a single command block using existing logic, preserving per-block flavor text
+function processCommandBlock(rawBlockText) {
+  try {
+    var text = rawBlockText
+    var rawText = rawBlockText
+
+    // In do-mode, lines may begin with "> name #..." at start-of-string.
+    // Slice the leading ">" to ensure consistent name extraction.
+    var nameSource = rawText.startsWith(">") ? rawText.slice(1) : rawText;
+
+    var parsedName = getCharacterName(nameSource)
+    if (parsedName != null && parsedName.trim() != "") state.characterName = parsedName.trim()
+    text = sanitizeText(text)
+
+    var lineBreakIndex = text.indexOf("\n")
+    if (lineBreakIndex > -1) {
+      state.flavorText = text.substring(lineBreakIndex + 1)
+      if (!state.flavorText.startsWith(" ")) state.flavorText = " " + state.flavorText
+      text = text.substring(0, lineBreakIndex)
+    } else {
+      state.flavorText = null
+    }
+
+    var command = text.substring(text.search(/#/) + 1)
+    var commandName = getCommandName(command).toLowerCase().replaceAll(/[^a-z0-9\s]*/gi, "")
+
+    if (state.characterName == null || !hasCharacter(state.characterName)) {
+      var found = processCommandSynonyms(command, commandName, createSynonyms, function () {return true})
+
+      if (state.characterName == null && found) {
+        state.show = "none"
+        text = `\n[Error: Character name not specified. Use the "do" or "say" modes. Alternatively, use "story" mode in the following format without quotes: "charactername #hashtag"]\n`
+        return text
+      }
+
+      if (!found) found = processCommandSynonyms(command, commandName, helpSynonyms.concat(rollSynonyms, noteSynonyms, eraseNoteSynonyms, showNotesSynonyms, clearNotesSynonyms, showCharactersSynonyms, removeCharacterSynonyms, generateNameSynonyms, setDefaultDifficultySynonyms, showDefaultDifficultySynonyms, renameCharacterSynonyms, cloneCharacterSynonyms, createLocationSynonyms, showLocationsSynonyms, goToLocationSynonyms, removeLocationSynonyms, getLocationSynonyms, clearLocationsSynonyms, goNorthSynonyms, goSouthSynonyms, goEastSynonyms, goWestSynonyms, encounterSynonyms, showEnemiesSynonyms, showAlliesSynonyms, addEnemySynonyms, addAllySynonyms, removeEnemySynonyms, removeAllySynonyms, clearEnemiesSynonyms, clearAlliesSynonyms, initiativeSynonyms, turnSynonyms, fleeSynonyms, versionSynonyms, setupEnemySynonyms, setupAllySynonyms, healSynonyms, damageSynonyms, restSynonyms, addExperienceSynonyms, healPartySynonyms, blockSynonyms, repeatTurnSynonyms, lockpickSynonyms, memorySynonyms, resetSynonyms), function () {return true})
+
+      if (found == null) {
+        if (state.characterName == null) {
+          state.show = "none"
+          text = `\n[Error: Character name not specified. Use the "do" or "say" modes. Alternatively, use "story" mode in the following format without quotes: "charactername #hashtag"]\n`
+          return text
+        } else {
+          state.show = "none"
+          text = `\n[Error: Character ${state.characterName} does not exist. Type #setup to create this character]\n`
+          return text
+        }
+      }
+    }
+
+    var out = null
+    if (out == null) out = processCommandSynonyms(command, commandName, rollSynonyms, doRoll)
+    if (out == null) out = processCommandSynonyms(command, commandName, createSynonyms, doCreate)
+    if (out == null) out = processCommandSynonyms(command, commandName, showCharactersSynonyms, doShowCharacters)
+    if (out == null) out = processCommandSynonyms(command, commandName, removeCharacterSynonyms, doRemoveCharacter)
+    if (out == null) out = processCommandSynonyms(command, commandName, bioSynonyms, doBio)
+    if (out == null) out = processCommandSynonyms(command, commandName, setClassSynonyms, doSetClass)
+    if (out == null) out = processCommandSynonyms(command, commandName, setSummarySynonyms, doSetSummary)
+    if (out == null) out = processCommandSynonyms(command, commandName, setHealthSynonyms, doSetHealth)
+    if (out == null) out = processCommandSynonyms(command, commandName, healSynonyms, doHeal)
+    if (out == null) out = processCommandSynonyms(command, commandName, damageSynonyms, doDamage)
+    if (out == null) out = processCommandSynonyms(command, commandName, restSynonyms, doRest)
+    if (out == null) out = processCommandSynonyms(command, commandName, setExperienceSynonyms, doSetExperience)
+    if (out == null) out = processCommandSynonyms(command, commandName, addExperienceSynonyms, doAddExperience)
+    if (out == null) out = processCommandSynonyms(command, commandName, levelUpSynonyms, doLevelUp)
+    if (out == null) out = processCommandSynonyms(command, commandName, showStatsSynonym, doShowStats)
+    if (out == null) out = processCommandSynonyms(command, commandName, setStatSynonyms, doSetStat)
+    if (out == null) out = processCommandSynonyms(command, commandName, setSpellStatSynonyms, doSetSpellStat)
+    if (out == null) out = processCommandSynonyms(command, commandName, showSkillsSynonyms, doShowSkills)
+    if (out == null) out = processCommandSynonyms(command, commandName, setSkillSynonyms, doSetSkill)
+    if (out == null) out = processCommandSynonyms(command, commandName, checkSynonyms, doCheck)
+    if (out == null) out = processCommandSynonyms(command, commandName, trySynonyms, doTry)
+    if (out == null) out = processCommandSynonyms(command, commandName, showNotesSynonyms, doShowNotes)
+    if (out == null) out = processCommandSynonyms(command, commandName, noteSynonyms, doNote)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearNotesSynonyms, doClearNotes)
+    if (out == null) out = processCommandSynonyms(command, commandName, eraseNoteSynonyms, doEraseNote)
+    if (out == null) out = processCommandSynonyms(command, commandName, takeSynonyms, doTake)
+    if (out == null) out = processCommandSynonyms(command, commandName, dropSynonyms, doDrop)
+    if (out == null) out = processCommandSynonyms(command, commandName, giveSynonyms, doGive)
+    if (out == null) out = processCommandSynonyms(command, commandName, renameItemSynonyms, doRenameItem)
+    if (out == null) out = processCommandSynonyms(command, commandName, inventorySynonyms, doInventory)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearInventorySynonyms, doClearInventory)
+    if (out == null) out = processCommandSynonyms(command, commandName, learnSpellSynonyms, doLearnSpell)
+    if (out == null) out = processCommandSynonyms(command, commandName, forgetSpellSynonyms, doForgetSpell)
+    if (out == null) out = processCommandSynonyms(command, commandName, castSpellSynonyms, doCastSpell)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearSpellsSynonyms, doClearSpells)
+    if (out == null) out = processCommandSynonyms(command, commandName, spellbookSynonyms, doSpellbook)
+    if (out == null) out = processCommandSynonyms(command, commandName, removeStatSynonyms, doRemoveStat)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearStatsSynonyms, doClearStats)
+    if (out == null) out = processCommandSynonyms(command, commandName, removeSkillSynonyms, doRemoveSkill)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearSkillsSynonyms, doClearSkills)
+    if (out == null) out = processCommandSynonyms(command, commandName, attackSynonyms, doAttack)
+    if (out == null) out = processCommandSynonyms(command, commandName, setMeleeStatSynonyms, doSetMeleeStat)
+    if (out == null) out = processCommandSynonyms(command, commandName, setrangedStatSynonyms, doSetRangedStat)
+    if (out == null) out = processCommandSynonyms(command, commandName, buySynonyms, doBuy)
+    if (out == null) out = processCommandSynonyms(command, commandName, sellSynonyms, doSell)
+    if (out == null) out = processCommandSynonyms(command, commandName, resetSynonyms, doReset)
+    if (out == null) out = processCommandSynonyms(command, commandName, setAutoXpSynonyms, doSetAutoXp)
+    if (out == null) out = processCommandSynonyms(command, commandName, showAutoXpSynonyms, doShowAutoXp)
+    if (out == null) out = processCommandSynonyms(command, commandName, setDefaultDifficultySynonyms, doSetDefaultDifficulty)
+    if (out == null) out = processCommandSynonyms(command, commandName, showDefaultDifficultySynonyms, doShowDefaultDifficulty)
+    if (out == null) out = processCommandSynonyms(command, commandName, generateNameSynonyms, doGenerateName)
+    if (out == null) out = processCommandSynonyms(command, commandName, createLocationSynonyms, doCreateLocation)
+    if (out == null) out = processCommandSynonyms(command, commandName, goToLocationSynonyms, doGoToLocation)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearLocationsSynonyms, doClearLocations)
+    if (out == null) out = processCommandSynonyms(command, commandName, removeLocationSynonyms, doRemoveLocation)
+    if (out == null) out = processCommandSynonyms(command, commandName, showLocationsSynonyms, doShowLocations)
+    if (out == null) out = processCommandSynonyms(command, commandName, getLocationSynonyms, doGetLocation)
+    if (out == null) out = processCommandSynonyms(command, commandName, mapSynonyms, doMap)
+    if (out == null) out = processCommandSynonyms(command, commandName, questsSynonyms, doQuests)
+    if (out == null) out = processCommandSynonyms(command, commandName, trackQuestSynonyms, doTrackQuest)
+    if (out == null) out = processCommandSynonyms(command, commandName, untrackQuestSynonyms, doUntrackQuest)
+    if (out == null) out = processCommandSynonyms(command, commandName, abandonQuestSynonyms, doAbandonQuest)
+    if (out == null) out = processCommandSynonyms(command, commandName, questSynonyms, doQuest)
+    if (out == null) out = processCommandSynonyms(command, commandName, goNorthSynonyms, doGoNorth)
+    if (out == null) out = processCommandSynonyms(command, commandName, goSouthSynonyms, doGoSouth)
+    if (out == null) out = processCommandSynonyms(command, commandName, goEastSynonyms, doGoEast)
+    if (out == null) out = processCommandSynonyms(command, commandName, goWestSynonyms, doGoWest)
+    if (out == null) out = processCommandSynonyms(command, commandName, renameCharacterSynonyms, doRenameCharacter)
+    if (out == null) out = processCommandSynonyms(command, commandName, cloneCharacterSynonyms, doCloneCharacter)
+    if (out == null) out = processCommandSynonyms(command, commandName, showDaySynonyms, doShowDay)
+    if (out == null) out = processCommandSynonyms(command, commandName, setDaySynonyms, doSetDay)
+    if (out == null) out = processCommandSynonyms(command, commandName, versionSynonyms, doVersion)
+    if (out == null) out = processCommandSynonyms(command, commandName, setAcSynonyms, doSetAc)
+    if (out == null) out = processCommandSynonyms(command, commandName, encounterSynonyms, doEncounter)
+    if (out == null) out = processCommandSynonyms(command, commandName, showEnemiesSynonyms, doShowEnemies)
+    if (out == null) out = processCommandSynonyms(command, commandName, showAlliesSynonyms, doShowAllies)
+    if (out == null) out = processCommandSynonyms(command, commandName, removeEnemySynonyms, doRemoveEnemy)
+    if (out == null) out = processCommandSynonyms(command, commandName, removeAllySynonyms, doRemoveAlly)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearEnemiesSynonyms, doClearEnemies)
+    if (out == null) out = processCommandSynonyms(command, commandName, clearAlliesSynonyms, doClearAllies)
+    if (out == null) out = processCommandSynonyms(command, commandName, addEnemySynonyms, doAddEnemy)
+    if (out == null) out = processCommandSynonyms(command, commandName, addAllySynonyms, doAddAlly)
+    if (out == null) out = processCommandSynonyms(command, commandName, initiativeSynonyms, doInitiative)
+    if (out == null) out = processCommandSynonyms(command, commandName, fleeSynonyms, doFlee)
+    if (out == null) out = processCommandSynonyms(command, commandName, turnSynonyms, doTurn)
+    if (out == null) out = processCommandSynonyms(command, commandName, setupEnemySynonyms, doSetupEnemy)
+    if (out == null) out = processCommandSynonyms(command, commandName, setupAllySynonyms, doSetupAlly)
+    if (out == null) out = processCommandSynonyms(command, commandName, setDamageSynonyms, doSetDamage)
+    if (out == null) out = processCommandSynonyms(command, commandName, setProficiencySynonyms, doSetProficiency)
+    if (out == null) out = processCommandSynonyms(command, commandName, healPartySynonyms, doHealParty)
+    if (out == null) out = processCommandSynonyms(command, commandName, blockSynonyms, doBlock)
+    if (out == null) out = processCommandSynonyms(command, commandName, repeatTurnSynonyms, doRepeatTurn)
+    if (out == null) out = processCommandSynonyms(command, commandName, basicDeckSynonyms, doBasicDeck)
+    if (out == null) out = processCommandSynonyms(command, commandName, cardShopSynonyms, doCardShop)
+    if (out == null) out = processCommandSynonyms(command, commandName, spellShopSynonyms, doSpellShop)
+    if (out == null) out = processCommandSynonyms(command, commandName, itemShopSynonyms, doItemShop)
+    if (out == null) out = processCommandSynonyms(command, commandName, stragedySynonyms, doStragedy)
+    if (out == null) out = processCommandSynonyms(command, commandName, lockpickSynonyms, doLockpick)
+    if (out == null) out = processCommandSynonyms(command, commandName, memorySynonyms, doMemory)
+    if (out == null) out = processCommandSynonyms(command, commandName, addCardSynonyms, doAddCard)
+    if (out == null) out = processCommandSynonyms(command, commandName, equipSynonyms, doEquip)
+    if (out == null) out = processCommandSynonyms(command, commandName, rewardSynonyms, doReward)
+    if (out == null) out = processCommandSynonyms(command, commandName, takeWeaponSynonyms, doTakeWeapon)
+    if (out == null) out = processCommandSynonyms(command, commandName, takeArmorSynonyms, doTakeArmor)
+    if (out == null) out = processCommandSynonyms(command, commandName, helpSynonyms, doHelp)
+    if (out == null) {
+      var character = getCharacter()
+      var statNames = []
+      character.stats.forEach(x => {
+        statNames.push(x.name.toLowerCase())
+      })
+      character.skills.forEach(x => {
+        statNames.push(x.name.toLowerCase())
+      })
+
+      out = processCommandSynonyms(command, commandName, statNames, doFlipCommandAbility)
+    }
+
+    if (state.flavorText != null) out += state.flavorText
+
+    return out
+  } catch (e) {
+    try { state.show = "none" } catch {}
+    return `\n[Error: ${e?.message || e}]\n`
+  }
+}
+
 const modifier = (text) => {
   init()
   const rawText = text
@@ -171,7 +369,23 @@ const modifier = (text) => {
     return { text }
   }
 
-  state.characterName = getCharacterName(rawText)
+  // Multi-command mode: split into blocks when multiple '#' command lines are present
+  var blocks = splitCommandBlocks(rawText)
+  if (blocks.length > 1) {
+    var outputs = []
+    for (var b = 0; b < blocks.length; b++) {
+      var result = processCommandBlock(blocks[b])
+      if (result != null && result.length > 0) outputs.push(result)
+    }
+    var combined = outputs.join("\n\n")
+    // Remove any accidental leading whitespace introduced by block processing
+    combined = combined.replace(/^\s+/, "")
+    combined = AutoCards("input", combined);
+    return { text: combined }
+  }
+
+  var parsedName = getCharacterName(rawText)
+  if (parsedName != null && parsedName.trim() != "") state.characterName = parsedName.trim()
   text = sanitizeText(text)
 
   var lineBreakIndex = text.indexOf("\n")

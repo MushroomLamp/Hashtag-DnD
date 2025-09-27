@@ -42,6 +42,21 @@ v. 0.9.0
   - `#untrackquest`
     - Stops tracking.
 
+* Added multi-command input while preserving flavor text and Auto-Cards
+  - You can now submit multiple `#` commands in a single message. Each line that begins with a `#` starts a new command block; any immediately following non-`#` lines are treated as that command's flavor/context.
+  - Example:
+```
+#take 500 gold
+I put the gold in my pack
+#shortrest
+#use rations
+after a short rest, i have a bite to eat
+```
+  - The combined output is processed once through Auto-Cards to keep cards in sync.
+* Improved do-mode name parsing and stability
+  - Fixed character-name extraction when lines begin with `>` (do-mode), and trimmed names to avoid leading-space lookup issues.
+  - Minor bug fixes and improvements.
+
 v. 0.8.0
 * Added Auto-Cards by LewdLeah. This feature is disabled by default. Activate it by changing the "Disabled" setting to "false" in the "Configure Auto-Cards" story card.
 

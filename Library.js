@@ -270,7 +270,10 @@ function calculateRoll(rolltext) {
 function getCharacter(characterName) {
   if (characterName == null) characterName = state.characterName
   if (characterName == null) return null
-  return state.characters.find(element => element.name.toLowerCase() == characterName.toLowerCase())
+  var lookup = characterName.trim().toLowerCase()
+  var found = state.characters.find(element => element.name.trim().toLowerCase() == lookup)
+  if (found != null && found.name !== found.name.trim()) found.name = found.name.trim()
+  return found
 }
 
 function hasCharacter(characterName) {
@@ -4572,7 +4575,7 @@ function AutoCards(inHook, inText, inStop) {
     Idea for the redoCard API function and "/ac redo" in-game command
 
     MushroomLamp
-    Implementing #quest system
+    #quest system, Multi-command mode
 
 
     A note to future individuals:
