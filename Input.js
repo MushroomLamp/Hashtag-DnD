@@ -5503,6 +5503,17 @@ function parseQuestRewardsAndObjectives(textRemainder) {
   const objectives = [];
   let work = textRemainder || "";
 
+  // If the remainder starts with a quoted title, extract it first
+  // Examples:
+  //  "Forging the Wind" xp:500 ...
+  //  "Forging the Wind" "Objective one" xp:500 ...
+  const leadingQuoted = work.match(/^\s*"([\s\S]*?)"\s*/);
+  let leadingTitle = null;
+  if (leadingQuoted) {
+    leadingTitle = (leadingQuoted[1] || "").trim();
+    work = work.slice(leadingQuoted[0].length);
+  }
+
   // Remove -r flags early
   work = work.replace(/\s-+r\b/gi, " ");
 
@@ -5546,7 +5557,11 @@ function parseQuestRewardsAndObjectives(textRemainder) {
   });
 
   // Title is what's left trimmed
-  const title = work.replace(/\s+/g, " ").trim();
+  let title = work.replace(/\s+/g, " ").trim();
+  // Prefer the leading quoted title if present
+  if (leadingTitle && leadingTitle.length > 0) {
+    title = leadingTitle;
+  }
   return { title, rewards, objectives };
 }
 

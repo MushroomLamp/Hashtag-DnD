@@ -171,7 +171,10 @@ function getArgumentRemainder(command, index) {
   while ((match = pattern.exec(command)) != null) {
     if (counter++ == index + 1) {
       var result = command.substring(match.index)
-      if (/^".*"$/g.test(result)) result = result.replace(/^"/, "").replace(/"$/, "")
+      // Only unwrap if the entire remainder is a single quoted string
+      if (/^"([^"\\]|\\.)*"$/.test(result)) {
+        result = result.slice(1, -1)
+      }
       return result.replaceAll(/\\"/g, '"')
     }
   }
