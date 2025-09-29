@@ -5598,7 +5598,8 @@ function questCreateOrUpdateCard(quest, eventText) {
       }
       // Do not append noisy event text to the card entry; rely on memories instead
 
-      const keys = `quest,quest:${quest.slug}`
+      // Use meaningful keys for AI context: generic "quest" plus the original title (spaces preserved)
+      const keys = `quest,${quest.title.trim()}`
       // Rebuild as a true Auto-Card so it can be prioritized/contextualized
       const safeTitle = quest.title.replace(/[{}]/g, "").trim()
       const entry = `{title: ${safeTitle}}` + valueText
@@ -5653,7 +5654,8 @@ function doQuest(command) {
           items: parsed.rewards.items || [],
           spells: parsed.rewards.spells || []
         },
-        tags: ["quest", `quest:${slug}`],
+        // Include both generic and human-readable tags for search/context
+        tags: ["quest", `quest:${slug}`, title.trim()],
         createdDay: state.day,
         completedDay: null,
         tracked: false
