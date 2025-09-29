@@ -3137,6 +3137,7 @@ function doHeal(command) {
   }
 
   var arg1 = getArgumentRemainder(command, 1)
+  if (arg1 != null) arg1 = stripPunctuation(arg1).trim()
   
   if (arg1 == null) {
     if (character == null) {
@@ -3219,6 +3220,7 @@ function doDamage(command) {
   }
 
   var arg1 = getArgumentRemainder(command, 1)
+  if (arg1 != null) arg1 = stripPunctuation(arg1).trim()
   
   if (arg1 == null) {
     if (character == null) {
