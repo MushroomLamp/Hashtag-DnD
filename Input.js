@@ -154,6 +154,21 @@ function processCommandBlock(rawBlockText) {
     var command = text.substring(text.search(/#/) + 1)
     var commandName = getCommandName(command).toLowerCase().replaceAll(/[^a-z0-9\s]*/gi, "")
 
+    // If a stray sentence-ending punctuation was appended to the end of this command line
+    // (common in multi-command inputs), remove it for free-text name commands unless it's inside quotes
+    const endsWithPunct = /[.!?]\s*$/.test(command)
+    const endsWithQuote = /"\s*$/.test(command)
+    if (endsWithPunct && !endsWithQuote) {
+      if (
+        learnSpellSynonyms.includes(commandName) ||
+        takeSynonyms.includes(commandName) ||
+        takeWeaponSynonyms.includes(commandName) ||
+        takeArmorSynonyms.includes(commandName)
+      ) {
+        command = command.replace(/[.!?]\s*$/, "")
+      }
+    }
+
     if (state.characterName == null || !hasCharacter(state.characterName)) {
       var found = processCommandSynonyms(command, commandName, createSynonyms, function () {return true})
 
@@ -370,7 +385,7 @@ const modifier = (text) => {
   }
 
   // Multi-command mode: split into blocks when multiple '#' command lines are present
-  var blocks = splitCommandBlocks(rawText)
+  var blocks = splitCommandBlocks(rawText.replace(/[.!?]\s*$/m, ""))
   if (blocks.length > 1) {
     var outputs = []
     var prefixes = []
@@ -391,6 +406,8 @@ const modifier = (text) => {
     var combined = parts.join("\n")
     // Remove any accidental leading whitespace introduced by block processing
     combined = combined.replace(/^\s+/, "")
+    // Also trim trailing whitespace so sentence-ender checks see the final punctuation
+    combined = combined.replace(/\s+$/, "")
     combined = AutoCards("input", combined);
     return { text: combined }
   }
@@ -554,6 +571,10 @@ const modifier = (text) => {
   }
 
   if (state.flavorText != null) text += state.flavorText
+
+  // Normalize leading/trailing whitespace for single-command mode (mirrors multi-command behavior)
+  text = text.replace(/^\s+/, "")
+  text = text.replace(/\s+$/, "")
 
   text = AutoCards("input", text);
 
@@ -4488,7 +4509,7 @@ function doTake(command) {
   if (item.quantity == 1) text += `${character.name} ${commandNamePlural} ${displayItemName.toLowerCase().startsWith("the ") ? "" : "the "}${displayItemName}.\n`
   else text += `${character.name} ${commandNamePlural} ${item.quantity} ${displayItemName}.\n`
 
-  var index = character.inventory.findIndex((element) => element.name.toLowerCase() == item.name.toLowerCase())
+  var index = findInventoryIndex(character.inventory, item.name)
   if (index == -1) {
     character.inventory.push(item)
   } else {
@@ -4557,7 +4578,7 @@ function doTakeWeapon(command) {
   var text = "\n"
   text += `${character.name} ${commandNamePlural} ${item.name.toLowerCase().startsWith("the ") ? "" : "the "}${item.name}.\n`
 
-  var index = character.inventory.findIndex((element) => element.name.toLowerCase() == item.name.toLowerCase())
+  var index = findInventoryIndex(character.inventory, item.name)
   if (index == -1) {
     character.inventory.push(item)
   } else {
@@ -4599,7 +4620,7 @@ function doTakeArmor(command) {
   var text = "\n"
   text += `${character.name} ${commandNamePlural} ${item.name.toLowerCase().startsWith("the ") ? "" : "the "}${item.name}.\n`
 
-  var index = character.inventory.findIndex((element) => element.name.toLowerCase() == item.name.toLowerCase())
+  var index = findInventoryIndex(character.inventory, item.name)
   if (index == -1) {
     character.inventory.push(item)
   } else {
@@ -4688,9 +4709,10 @@ function doEquip(command) {
 
   var dontWord = character.name == "You" ? "don't" : "doesn't"
 
-  let itemName = stripPunctuation(getArgumentRemainder(command, 0))
+  let itemName = getArgumentRemainder(command, 0)
 
-  let item = character.inventory.find((element) => element.name.toLowerCase() == itemName.toLowerCase())
+  let idx = findInventoryIndex(character.inventory, itemName)
+  let item = idx == -1 ? null : character.inventory[idx]
 
   if (item == null) return `${character.name} tried to equip ${toTitleCase(itemName)}, but ${dontWord} possess it`
 
@@ -4755,7 +4777,7 @@ function doDrop(command) {
   if (item.quantity < 0) item.quantity = 1
 
   var text = "\n"
-  var index = character.inventory.findIndex((element) => element.name.toLowerCase() == item.name.toLowerCase())
+  var index = findInventoryIndex(character.inventory, item.name)
   if (index == -1) {
     if (item.quantity == 1) text += `${character.name} ${tryWord} to ${commandName} the ${displayItemName}, but ${character.name} ${dontWord} have any.`
     else text += `${character.name} ${tryWord} to ${commandName} ${item.quantity == Number.MAX_SAFE_INTEGER ? arg0 : item.quantity} ${displayItemName}, but ${characterNameAdjustedCase} ${dontWord} have any.`
@@ -4821,7 +4843,7 @@ function doGive(command) {
 
   var text = "\n\n"
 
-  var index = character.inventory.findIndex((element) => element.name.toLowerCase() == item.name.toLowerCase())
+  var index = findInventoryIndex(character.inventory, item.name)
   if (index == -1) {
     if (item.quantity == 1) text += `${character.name} ${tryWord} to ${commandName.plural(true)} the ${displayItemName}, but ${characterNameAdjustedCase} ${dontWord} have any.`
     else text += `${character.name} ${tryWord} to ${commandName.plural(true)} ${item.quantity == Number.MAX_SAFE_INTEGER ? arg0 : item.quantity} ${displayItemName}, but ${characterNameAdjustedCase} ${dontWord} have any.`
@@ -4847,7 +4869,7 @@ function doGive(command) {
   if (item.quantity == 1) text += `${character.name} ${commandName.plural(character.name == "You")} ${otherNameAdjustedCase} the ${displayItemName}.`
   else text += `${character.name} ${commandName.plural(character.name == "You")} ${otherNameAdjustedCase} ${item.quantity} ${displayItemName}.`
 
-  var otherIndex = otherCharacter.inventory.findIndex((element) => element.name.toLowerCase() == item.name.toLowerCase())
+  var otherIndex = findInventoryIndex(otherCharacter.inventory, item.name)
   if (otherIndex == -1) {
     otherCharacter.inventory.push(item)
   } else {
@@ -4915,7 +4937,7 @@ function doBuy(command) {
 
   var text = "\n\n"
 
-  var index = character.inventory.findIndex((element) => element.name.toLowerCase() == sellName.toLowerCase())
+  var index = findInventoryIndex(character.inventory, sellName)
   if (index == -1) {
     if (sellQuantity == 1) text += `${character.name} ${tryWord} to trade the ${displayItemName}, but ${characterNameAdjustedCase} ${dontWord} have any.`
     else text += `${character.name} ${tryWord} to trade ${sellQuantity} ${displayItemName}, but ${characterNameAdjustedCase} ${dontWord} have any.`
@@ -4940,7 +4962,7 @@ function doBuy(command) {
   if (sellQuantity == 1) text += `${character.name} ${tradeWord} the ${displayItemName} for ${suffix}.`
   else text += `${character.name} ${tradeWord} ${sellQuantity} ${displayItemName} for ${suffix}.`
 
-  index = character.inventory.findIndex((element) => element.name.toLowerCase() == buyName.toLowerCase())
+  index = findInventoryIndex(character.inventory, buyName)
   if (index == -1) {
     character.inventory.push({name: buyName, quantity: buyQuantity})
     buyItemTotal = buyQuantity
@@ -5017,7 +5039,7 @@ function doRenameItem(command) {
   state.show = "none"
   var text = `\n[${possessiveName} ${arg0} has been renamed to ${arg1}]\n`
 
-  var index = character.inventory.findIndex((element) => element.name.toLowerCase() == arg0.toLowerCase())
+  var index = findInventoryIndex(character.inventory, arg0)
   if (index >= 0 ) {
     var existingItem = character.inventory[index]
     existingItem.name = arg1
@@ -5032,7 +5054,7 @@ function doInventory(command) {
 }
 
 function doLearnSpell(command) {
-  var arg0 = getArgumentRemainder(command, 0)
+  var arg0 = getArgumentRemainder(command, 0).trim()
   if (arg0 == "") {
     state.show = "none"
     return "\n[Error: Not enough parameters. See #help]\n"
@@ -5052,7 +5074,7 @@ function doLearnSpell(command) {
 
 function doForgetSpell(command) {
   var character = getCharacter()
-  var arg0 = getArgumentRemainder(command, 0)
+  var arg0 = getArgumentRemainder(command, 0).trim()
   if (arg0 == "") {
     state.show = "none"
     return "\n[Error: Not enough parameters. See #help]\n"
@@ -5060,13 +5082,16 @@ function doForgetSpell(command) {
   var dontWord = character.name == "You" ? "don't" : "doesn't"
   var tryWord = character.name == "You" ? "try" : "tries"
 
+  const normalize = (s) => stripPunctuation(s).toLowerCase()
   var found = character.spells.find(x => x.toLowerCase() == arg0.toLowerCase())
+  if (found == null) found = character.spells.find(x => normalize(x) == normalize(arg0))
   if (found == null) {
     state.show = "none"
     return `\n[${character.name} ${tryWord} to forget the spell ${arg0}, but ${character.name} ${dontWord} even know it]\n`
   }
   
   var index = character.spells.findIndex(x => x.toLowerCase() == arg0.toLowerCase())
+  if (index == -1) index = character.spells.findIndex(x => normalize(x) == normalize(arg0))
   character.spells.splice(index, 1)
 
   state.show = "none"

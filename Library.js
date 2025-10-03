@@ -385,6 +385,8 @@ function executeTurn(activeCharacter) {
         var spell = spell.substring(0, spell.length - diceMatches[0].length)
         if (hit) {
           var damage = calculateRoll(diceMatches[0])
+          state.blockCharacter = target
+          state.blockPreviousHealth = target.health
           target.health = Math.max(target.health - damage, 0)
 
           text += `\n[Character AC: ${target.ac} Attack roll: ${attack}]\n`
@@ -428,6 +430,8 @@ function executeTurn(activeCharacter) {
         var spell = spell.substring(0, spell.length - diceMatches[0].length)
         if (hit) {
           var damage = calculateRoll(diceMatches[0])
+          state.blockCharacter = target
+          state.blockPreviousHealth = target.health
           target.health = Math.max(target.health - damage, 0)
 
           text += `\n[Character AC: ${target.ac} Attack roll: ${attack}]\n`
@@ -3927,7 +3931,9 @@ String.prototype.plural = function(revert) {
         '(h|bl)ouses$'           : "$1ouse",
         '(corpse)s$'             : "$1",
         '(us)es$'                : "$1",
-        's$'                     : ""
+        // Avoid stripping the last "s" from words that already end with "ss"
+        // This prevents incorrect singularization like "Compass" -> "Compas"
+        '([^s])s$'               : "$1"
     };
 
     var irregular = {
@@ -4018,6 +4024,35 @@ function toTitleCase(str) {
 
 function stripPunctuation(str) {
   return str.replaceAll(/((\.)|(!))\s*$/g, "")
+}
+
+function findInventoryIndex(inventory, name) {
+  if (name == null) return -1
+
+  const normalize = (s) => stripPunctuation(s)
+    .trim()
+    .replace(/^((the)|(a)|(an))\s+/i, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+
+  // 1) Fast path: direct case-insensitive match
+  let idx = inventory.findIndex((element) => element.name.toLowerCase() == name.toLowerCase())
+  if (idx != -1) return idx
+
+  // 2) Normalized comparison (trim, strip punctuation, drop leading article, collapse spaces)
+  const targetBase = normalize(name)
+  idx = inventory.findIndex((element) => normalize(element.name) == targetBase)
+  if (idx != -1) return idx
+
+  // 3) Try singular/plural variants of the requested name
+  const variants = [name, name.plural(true), name.plural(false)]
+  for (let v of variants) {
+    const tv = normalize(v)
+    idx = inventory.findIndex((element) => normalize(element.name) == tv)
+    if (idx != -1) return idx
+  }
+
+  return -1
 }
 
 var fantasyFemaleNames = ["Luna", "Kayla", "Serenity", "Eira", "Mirah", "Elowen", "Keira", "Calantha", "Natalia", "Eirlys", "Freya", "Ophelia", "Piper", "Alethea", "Melara", "Seraphina", "Delilah", "Lorna", "Echo", "Bree", "Daniella", "Branwen", "Matilda", "Eve", "Brynhild", "Ithilda", "Belinda", "Catarina", "Jora", "Zelda", "Thalia", "Rowan", "Aurora", "Coral", "Vivian", "Briella", "Elvina", "Lylah", "Mirastral", "Nadira", "Marcella", "Kestrel", "Avis", "Laura", "Vesper", "Lucilla", "Sabine", "Evelyn", "Kalinda", "Celeste", "Lilith", "Wren", "Jasmine", "Ondine", "Gabriella", "Astrid", "Elise", "Helena", "Nova", "Lyndal", "Zara", "Niamh", "Vynessa", "Erin", "Lyriel", "Dracaena", "Lila", "Brynna", "Zephyr", "Kira", "Ava", "Elinor", "Carmilla", "Isabella", "Ariana", "Rhianna", "Sylvie", "Kymberley", "Hazel", "Lirien", "Bridget", "Lyra", "Galatea", "Nadine", "Alethia", "Larissa", "Sariel", "Theodora", "Gwynneth", "Eleanor", "Odessa", "Meryll", "Sophia", "Kaia", "Brynhilda", "Haven", "Eluned", "Selene", "Bryony", "Ciara"]
